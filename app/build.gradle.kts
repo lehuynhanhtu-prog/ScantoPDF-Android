@@ -27,4 +27,5 @@ kotlin {
 
 dependencies {
     implementation("androidx.core:core:1.17.0")
+    implementation("androidx.exifinterface:exifinterface:1.4.1")
 }
