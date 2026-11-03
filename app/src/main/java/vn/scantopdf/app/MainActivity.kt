@@ -10,6 +10,10 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.provider.MediaStore
+import android.provider.DocumentsContract
+import android.os.Build
+import android.app.AlertDialog
+import android.view.Gravity
 import androidx.core.content.FileProvider
 import java.io.File
 import android.widget.*
@@ -36,6 +40,10 @@ class MainActivity : Activity() {
         layout.addView(heading)
         status = TextView(this).apply { text = "Chưa chọn ảnh"; textSize = 16f }
         layout.addView(status)
+
+        val newScan = Button(this).apply { text = "Tạo scan mới" }
+        newScan.setOnClickListener { resetScanSession(showMessage = true) }
+        layout.addView(newScan)
         val pick = Button(this).apply { text = "Duyệt ảnh từ thư mục / Cloud Drive" }
         pick.setOnClickListener { openImageBrowser() }
         layout.addView(pick)
@@ -58,6 +66,9 @@ class MainActivity : Activity() {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_TITLE, "ScantoPDF.pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }, SAVE)
         }
         layout.addView(export)
@@ -136,7 +147,61 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun refresh() { status.text = "Đã chọn ${photos.size} ảnh" }
+    private fun resetScanSession(showMessage: Boolean = false) {
+        photos.clear()
+        pendingCameraUri = null
+        File(cacheDir, "captured").listFiles()?.forEach { it.delete() }
+        refresh()
+        if (showMessage) toast("Đã bắt đầu scan mới")
+    }
+
+    private fun showCreatingDialog(): AlertDialog {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(48, 40, 48, 40)
+        }
+        val progress = ProgressBar(this).apply { isIndeterminate = true }
+        val message = TextView(this).apply {
+            text = "Đang tạo PDF...\nVui lòng không đóng ứng dụng."
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setPadding(0, 24, 0, 0)
+        }
+        box.addView(progress)
+        box.addView(message)
+
+        return AlertDialog.Builder(this)
+            .setTitle("Đang xử lý tài liệu")
+            .setView(box)
+            .setCancelable(false)
+            .create()
+    }
+
+    private fun openSavedPdfLocation(uri: Uri) {
+        try {
+            val browse = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/pdf"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    putExtra(DocumentsContract.EXTRA_INITIAL_URI, uri)
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(browse)
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/pdf")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            } catch (_: Exception) {
+                toast("PDF đã lưu thành công")
+            }
+        }
+    }
+
+    private fun refresh() { status.text = if (photos.isEmpty()) "Chưa chọn ảnh" else "Đã chọn ${photos.size} ảnh" }
     private fun toast(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     @Deprecated("Activity result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -158,30 +223,62 @@ class MainActivity : Activity() {
         }
         if (requestCode == SAVE) {
             val target = data?.data ?: return
+            try {
+                val flags = data.flags and
+                    (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                contentResolver.takePersistableUriPermission(target, flags)
+            } catch (_: Exception) {
+            }
+
+            val pageUris = photos.toList()
+            val dialog = showCreatingDialog()
+            dialog.show()
             status.text = "Đang tạo PDF..."
+
             Thread {
                 try {
                     val pdf = PdfDocument()
-                    for ((index, uri) in photos.withIndex()) {
+                    for ((index, uri) in pageUris.withIndex()) {
+                        runOnUiThread {
+                            status.text = "Đang tạo PDF: trang ${index + 1}/${pageUris.size}"
+                        }
                         val bitmap = loadBitmap(uri)
                         val processed = process(bitmap)
-                        val w = 595; val h = 842
-                        val page = pdf.startPage(PdfDocument.PageInfo.Builder(w,h,index+1).create())
-                        val scale = min(w.toFloat()/processed.width,h.toFloat()/processed.height)
-                        val dw = processed.width * scale; val dh = processed.height * scale
-                        val rect = android.graphics.RectF((w-dw)/2,(h-dh)/2,(w+dw)/2,(h+dh)/2)
+                        val w = 595
+                        val h = 842
+                        val page = pdf.startPage(PdfDocument.PageInfo.Builder(w, h, index + 1).create())
+                        val scale = min(w.toFloat() / processed.width, h.toFloat() / processed.height)
+                        val dw = processed.width * scale
+                        val dh = processed.height * scale
+                        val rect = android.graphics.RectF((w-dw)/2, (h-dh)/2, (w+dw)/2, (h+dh)/2)
                         page.canvas.drawColor(Color.WHITE)
-                        page.canvas.drawBitmap(processed,null,rect,Paint(Paint.FILTER_BITMAP_FLAG))
+                        page.canvas.drawBitmap(processed, null, rect, Paint(Paint.FILTER_BITMAP_FLAG))
                         pdf.finishPage(page)
                         if (processed !== bitmap) processed.recycle()
                         bitmap.recycle()
                     }
+
                     contentResolver.openOutputStream(target)?.use { pdf.writeTo(it) }
                         ?: error("Không thể mở tệp đầu ra")
                     pdf.close()
-                    runOnUiThread { status.text = "Đã lưu PDF"; toast("Tạo PDF thành công") }
+
+                    runOnUiThread {
+                        dialog.dismiss()
+                        resetScanSession(showMessage = false)
+                        status.text = "Đã tạo PDF thành công"
+                        Toast.makeText(
+                            this,
+                            "Đã tạo PDF thành công. Đang mở vị trí file...",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        openSavedPdfLocation(target)
+                    }
                 } catch (e: Exception) {
-                    runOnUiThread { status.text = "Lỗi: ${e.message}"; toast("Không thể tạo PDF") }
+                    runOnUiThread {
+                        dialog.dismiss()
+                        status.text = "Lỗi: ${e.message}"
+                        toast("Không thể tạo PDF")
+                    }
                 }
             }.start()
         }
