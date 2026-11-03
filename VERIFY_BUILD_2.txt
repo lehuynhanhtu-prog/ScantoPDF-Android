@@ -1,0 +1,1 @@
+Trigger clean PR APK verification after sdkmanager path fix.
