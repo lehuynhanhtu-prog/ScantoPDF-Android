@@ -1,4 +1,5 @@
 name: Deploy download page
+# rerun after Pages enabled
 
 on:
   push:
