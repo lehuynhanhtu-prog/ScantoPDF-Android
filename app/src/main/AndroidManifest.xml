@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
- <application android:label="ScantoPDF" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+ <application android:label="ScantoPDF" android:icon="@drawable/ic_launcher" android:roundIcon="@drawable/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar">
   <provider
    android:name="androidx.core.content.FileProvider"
    android:authorities="vn.scantopdf.app.fileprovider"
