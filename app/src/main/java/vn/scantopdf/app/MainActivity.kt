@@ -11,12 +11,10 @@ import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.view.Gravity
-import android.view.View
 import android.widget.*
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
@@ -26,6 +24,7 @@ import kotlin.math.min
 
 class MainActivity : Activity() {
     private val photos = mutableListOf<Uri>()
+    private val pageRotations = mutableMapOf<Uri, Int>()
     private lateinit var status: TextView
     private lateinit var mode: Spinner
     private lateinit var quality: Spinner
@@ -162,14 +161,7 @@ class MainActivity : Activity() {
                 toast("Hãy chọn ảnh hoặc chụp tài liệu trước")
                 return@setOnClickListener
             }
-            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/pdf"
-                putExtra(Intent.EXTRA_TITLE, "ScantoPDF.pdf")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            }, SAVE)
+            showPageReviewDialog()
         }
         content.addView(export, fullWidth(bottom = 12))
 
@@ -302,7 +294,10 @@ class MainActivity : Activity() {
     private fun addPhoto(uri: Uri) {
         val type = contentResolver.getType(uri)
         if (type != null && !type.startsWith("image/")) return
-        if (!photos.contains(uri)) photos.add(uri)
+        if (!photos.contains(uri)) {
+            photos.add(uri)
+            pageRotations[uri] = 0
+        }
         try {
             contentResolver.takePersistableUriPermission(
                 uri,
@@ -314,6 +309,7 @@ class MainActivity : Activity() {
 
     private fun resetScanSession(showMessage: Boolean = false) {
         photos.clear()
+        pageRotations.clear()
         pendingCameraUri = null
         File(cacheDir, "captured").listFiles()?.forEach { it.delete() }
         refresh()
@@ -342,29 +338,164 @@ class MainActivity : Activity() {
             .create()
     }
 
-    private fun openSavedPdfLocation(uri: Uri) {
+    private fun savedFileDescription(uri: Uri): String {
+        var name = "ScantoPDF.pdf"
         try {
-            val browse = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/pdf"
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    putExtra(DocumentsContract.EXTRA_INITIAL_URI, uri)
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) name = cursor.getString(index)
                 }
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(browse)
         } catch (_: Exception) {
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/pdf")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                })
-            } catch (_: Exception) {
-                toast("PDF đã lưu thành công")
-            }
         }
+
+        val location = try {
+            if (android.provider.DocumentsContract.isDocumentUri(this, uri)) {
+                android.provider.DocumentsContract.getDocumentId(uri)
+            } else {
+                uri.toString()
+            }
+        } catch (_: Exception) {
+            uri.toString()
+        }
+
+        return "Tên file: $name\nVị trí: $location"
     }
 
+    private fun startSavePdf() {
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_TITLE, "ScantoPDF.pdf")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }, SAVE)
+    }
+
+    private fun showPageReviewDialog() {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+
+        val rotateAll = actionButton("Xoay tất cả 90°", blue)
+        container.addView(rotateAll, fullWidth(bottom = 10))
+
+        val previews = mutableListOf<ImageView>()
+
+        photos.forEachIndexed { index, uri ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(10), dp(10), dp(10), dp(12))
+                background = rounded(Color.WHITE, 14f, strokeColor = Color.rgb(224, 230, 238))
+            }
+
+            row.addView(TextView(this).apply {
+                text = "Trang ${index + 1}"
+                textSize = 15f
+                setTextColor(textPrimary)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }, fullWidth(bottom = 8))
+
+            val image = ImageView(this).apply {
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setBackgroundColor(Color.rgb(245, 247, 250))
+                rotation = (pageRotations[uri] ?: 0).toFloat()
+                try { setImageBitmap(loadPreviewBitmap(uri)) } catch (_: Exception) { }
+            }
+            previews.add(image)
+            row.addView(image, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(220)
+            ).apply { bottomMargin = dp(8) })
+
+            val rotateOne = actionButton("Xoay trang 90°", navy)
+            rotateOne.setOnClickListener {
+                val next = ((pageRotations[uri] ?: 0) + 90) % 360
+                pageRotations[uri] = next
+                image.rotation = next.toFloat()
+            }
+            row.addView(rotateOne, fullWidth())
+            container.addView(row, fullWidth(bottom = 10))
+        }
+
+        rotateAll.setOnClickListener {
+            photos.forEachIndexed { index, uri ->
+                val next = ((pageRotations[uri] ?: 0) + 90) % 360
+                pageRotations[uri] = next
+                previews[index].rotation = next.toFloat()
+            }
+        }
+
+        val scroll = ScrollView(this).apply { addView(container) }
+
+        AlertDialog.Builder(this)
+            .setTitle("Kiểm tra hướng các trang")
+            .setMessage("Xem lại từng ảnh trước khi tạo PDF. Có thể xoay riêng từng trang hoặc xoay tất cả.")
+            .setView(scroll)
+            .setNegativeButton("Quay lại", null)
+            .setPositiveButton("Tiếp tục lưu") { _, _ -> startSavePdf() }
+            .show()
+    }
+
+    private fun loadPreviewBitmap(uri: Uri): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 700) sample *= 2
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val decoded = contentResolver.openInputStream(uri)!!.use {
+            BitmapFactory.decodeStream(it, null, opts)
+        } ?: error("Ảnh không hợp lệ")
+        return applyExifOrientation(uri, decoded)
+    }
+
+    private fun applyExifOrientation(uri: Uri, decoded: Bitmap): Bitmap {
+        val orientation = try {
+            contentResolver.openInputStream(uri)!!.use {
+                ExifInterface(it).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            }
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.preScale(-1f, 1f)
+                matrix.postRotate(270f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.preScale(-1f, 1f)
+                matrix.postRotate(90f)
+            }
+        }
+        if (matrix.isIdentity) return decoded
+        val corrected = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+        if (corrected !== decoded) decoded.recycle()
+        return corrected
+    }
+
+    private fun rotateForPdf(source: Bitmap, degrees: Int): Bitmap {
+        val normalized = ((degrees % 360) + 360) % 360
+        if (normalized == 0) return source
+        val matrix = Matrix().apply { postRotate(normalized.toFloat()) }
+        return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+    }
     private fun refresh() {
         status.text = when (photos.size) {
             0 -> "Chưa có trang nào"
@@ -439,18 +570,19 @@ class MainActivity : Activity() {
                         }
                         val bitmap = loadBitmap(uri)
                         val processed = process(bitmap)
-                        val isLandscape = processed.width > processed.height
+                        val finalBitmap = rotateForPdf(processed, pageRotations[uri] ?: 0)
+                        val isLandscape = finalBitmap.width > finalBitmap.height
                         val w = if (isLandscape) 842 else 595
                         val h = if (isLandscape) 595 else 842
                         val page = pdf.startPage(
                             PdfDocument.PageInfo.Builder(w, h, index + 1).create()
                         )
                         val scale = min(
-                            w.toFloat() / processed.width,
-                            h.toFloat() / processed.height
+                            w.toFloat() / finalBitmap.width,
+                            h.toFloat() / finalBitmap.height
                         )
-                        val dw = processed.width * scale
-                        val dh = processed.height * scale
+                        val dw = finalBitmap.width * scale
+                        val dh = finalBitmap.height * scale
                         val rect = android.graphics.RectF(
                             (w - dw) / 2,
                             (h - dh) / 2,
@@ -459,12 +591,13 @@ class MainActivity : Activity() {
                         )
                         page.canvas.drawColor(Color.WHITE)
                         page.canvas.drawBitmap(
-                            processed,
+                            finalBitmap,
                             null,
                             rect,
                             Paint(Paint.FILTER_BITMAP_FLAG)
                         )
                         pdf.finishPage(page)
+                        if (finalBitmap !== processed) finalBitmap.recycle()
                         if (processed !== bitmap) processed.recycle()
                         bitmap.recycle()
                     }
@@ -477,12 +610,11 @@ class MainActivity : Activity() {
                         dialog.dismiss()
                         resetScanSession(showMessage = false)
                         status.text = "Đã tạo PDF thành công"
-                        Toast.makeText(
-                            this,
-                            "Đã tạo PDF thành công. Đang mở vị trí file...",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        openSavedPdfLocation(target)
+                        AlertDialog.Builder(this)
+                            .setTitle("Đã tạo PDF thành công")
+                            .setMessage(savedFileDescription(target))
+                            .setPositiveButton("Đóng", null)
+                            .show()
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
@@ -500,69 +632,22 @@ class MainActivity : Activity() {
         contentResolver.openInputStream(uri)!!.use {
             BitmapFactory.decodeStream(it, null, bounds)
         }
-
         var sample = 1
         val maxDimension = when (quality.selectedItemPosition) {
             0 -> 1300
             1 -> 1900
             else -> 2600
         }
-        while (max(bounds.outWidth, bounds.outHeight) / sample > maxDimension * 2) {
-            sample *= 2
-        }
-
+        while (max(bounds.outWidth, bounds.outHeight) / sample > maxDimension * 2) sample *= 2
         val opts = BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-
         val decoded = contentResolver.openInputStream(uri)!!.use {
             BitmapFactory.decodeStream(it, null, opts)
         } ?: error("Ảnh không hợp lệ")
-
-        val orientation = try {
-            contentResolver.openInputStream(uri)!!.use {
-                ExifInterface(it).getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL
-                )
-            }
-        } catch (_: Exception) {
-            ExifInterface.ORIENTATION_NORMAL
-        }
-
-        val matrix = Matrix()
-        when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
-            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
-            ExifInterface.ORIENTATION_TRANSPOSE -> {
-                matrix.preScale(-1f, 1f)
-                matrix.postRotate(270f)
-            }
-            ExifInterface.ORIENTATION_TRANSVERSE -> {
-                matrix.preScale(-1f, 1f)
-                matrix.postRotate(90f)
-            }
-        }
-
-        if (matrix.isIdentity) return decoded
-
-        val rotated = Bitmap.createBitmap(
-            decoded,
-            0,
-            0,
-            decoded.width,
-            decoded.height,
-            matrix,
-            true
-        )
-        if (rotated !== decoded) decoded.recycle()
-        return rotated
+        return applyExifOrientation(uri, decoded)
     }
-
     private fun process(source: Bitmap): Bitmap {
         val selected = mode.selectedItemPosition
         if (selected == 0) return source
