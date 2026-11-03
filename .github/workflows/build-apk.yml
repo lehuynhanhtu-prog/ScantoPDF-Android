@@ -34,19 +34,26 @@ jobs:
           gradle-version: '8.13'
 
       - name: Locate sdkmanager
+        shell: bash
         run: |
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
           test -x "$SDKMANAGER"
 
       - name: Accept Android SDK licenses
-        run: yes | "$SDKMANAGER" --licenses > /dev/null || true
+        shell: bash
+        run: |
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Install Android API 36
-        run: "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+        shell: bash
+        run: |
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        shell: bash
+        run: |
+          gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
