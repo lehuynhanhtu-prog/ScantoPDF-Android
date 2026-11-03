@@ -1,0 +1,1 @@
+Trigger pull request build verification for ScantoPDF Android APK.
