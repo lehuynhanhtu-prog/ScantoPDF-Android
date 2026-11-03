@@ -573,10 +573,10 @@ class MainActivity : Activity() {
                         val manualRotation = ((pageRotations[uri] ?: 0) % 360 + 360) % 360
                         val finalBitmap = rotateForPdf(processed, manualRotation)
 
-                        val baseLandscape = processed.width > processed.height
-                        val quarterTurn = manualRotation == 90 || manualRotation == 270
-                        val pageLandscape = if (quarterTurn) !baseLandscape else baseLandscape
-
+                        // Quyết định khổ trang từ chính bitmap cuối cùng sau khi đã
+                        // áp dụng EXIF + xoay thủ công. Điều này bảo đảm ảnh xoay ngang
+                        // thì trang PDF cũng ngang, ảnh xoay dọc thì trang PDF cũng dọc.
+                        val pageLandscape = finalBitmap.width > finalBitmap.height
                         val w = if (pageLandscape) 842 else 595
                         val h = if (pageLandscape) 595 else 842
                         val page = pdf.startPage(
