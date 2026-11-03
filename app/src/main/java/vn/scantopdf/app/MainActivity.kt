@@ -5,13 +5,11 @@ import android.os.Bundle
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.widget.*
-import java.io.ByteArrayOutputStream
 import kotlin.math.min
 import kotlin.math.max
 
@@ -33,14 +31,8 @@ class MainActivity : Activity() {
         layout.addView(heading)
         status = TextView(this).apply { text = "Chưa chọn ảnh"; textSize = 16f }
         layout.addView(status)
-        val pick = Button(this).apply { text = "Chọn nhiều ảnh" }
-        pick.setOnClickListener {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                type = "image/*"; addCategory(Intent.CATEGORY_OPENABLE)
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            }
-            startActivityForResult(intent, PICK)
-        }
+        val pick = Button(this).apply { text = "Duyệt ảnh từ thư mục / Cloud Drive" }
+        pick.setOnClickListener { openImageBrowser() }
         layout.addView(pick)
         mode = Spinner(this)
         mode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("Màu", "Xám", "Trắng đen (B&W)"))
@@ -62,7 +54,7 @@ class MainActivity : Activity() {
         }
         layout.addView(export)
         val help = TextView(this).apply {
-            text = "Trong màn hình lưu, chọn bộ nhớ máy, Google Drive hoặc nhà cung cấp tệp đã cài. Có thể chia sẻ PDF từ ứng dụng quản lý tệp qua Zalo, Viber, email."
+            text = "Có thể duyệt ảnh từ bất kỳ thư mục nào trên máy hoặc nhà cung cấp tệp như Google Drive/OneDrive đã cài. Bộ chọn chỉ hiển thị file ảnh. Có thể mở lại nhiều lần để thêm ảnh từ các thư mục khác nhau."
         }
         layout.addView(help)
         setContentView(ScrollView(this).apply { addView(layout) })
@@ -73,6 +65,43 @@ class MainActivity : Activity() {
         }
         refresh()
     }
+    private fun openImageBrowser() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp",
+                    "image/heic",
+                    "image/heif",
+                    "image/bmp",
+                    "image/gif",
+                    "image/tiff"
+                )
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(intent, PICK)
+    }
+
+    private fun addPhoto(uri: Uri) {
+        val type = contentResolver.getType(uri)
+        if (type != null && !type.startsWith("image/")) return
+        if (!photos.contains(uri)) photos.add(uri)
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: SecurityException) {
+        }
+    }
+
     private fun refresh() { status.text = "Đã chọn ${photos.size} ảnh" }
     private fun toast(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     @Deprecated("Activity result")
@@ -80,8 +109,9 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK || data == null) return
         if (requestCode == PICK) {
-            data.clipData?.let { clip -> for (i in 0 until clip.itemCount) photos.add(clip.getItemAt(i).uri) }
-                ?: data.data?.let { photos.add(it) }
+            data.clipData?.let { clip ->
+                for (i in 0 until clip.itemCount) addPhoto(clip.getItemAt(i).uri)
+            } ?: data.data?.let { addPhoto(it) }
             refresh()
         }
         if (requestCode == SAVE) {
