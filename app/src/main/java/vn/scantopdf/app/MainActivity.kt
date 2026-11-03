@@ -380,8 +380,16 @@ class MainActivity : Activity() {
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
 
+        lateinit var dialog: AlertDialog
+
+        val createPdf = actionButton("Tạo file PDF", green).apply {
+            textSize = 17f
+            minHeight = dp(58)
+        }
+        container.addView(createPdf, fullWidth(bottom = 10))
+
         val rotateAll = actionButton("Xoay tất cả 90°", blue)
-        container.addView(rotateAll, fullWidth(bottom = 10))
+        container.addView(rotateAll, fullWidth(bottom = 12))
 
         val previews = mutableListOf<ImageView>()
 
@@ -404,42 +412,69 @@ class MainActivity : Activity() {
                 adjustViewBounds = true
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setBackgroundColor(Color.rgb(245, 247, 250))
-                rotation = (pageRotations[uri] ?: 0).toFloat()
-                try { setImageBitmap(loadPreviewBitmap(uri)) } catch (_: Exception) { }
             }
+            updatePreviewImage(image, uri)
             previews.add(image)
-            row.addView(image, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(220)
-            ).apply { bottomMargin = dp(8) })
+
+            row.addView(
+                image,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(220)
+                ).apply { bottomMargin = dp(8) }
+            )
 
             val rotateOne = actionButton("Xoay trang 90°", navy)
             rotateOne.setOnClickListener {
-                val next = ((pageRotations[uri] ?: 0) + 90) % 360
-                pageRotations[uri] = next
-                image.rotation = next.toFloat()
+                pageRotations[uri] = ((pageRotations[uri] ?: 0) + 90) % 360
+                updatePreviewImage(image, uri)
             }
             row.addView(rotateOne, fullWidth())
+
             container.addView(row, fullWidth(bottom = 10))
         }
 
         rotateAll.setOnClickListener {
             photos.forEachIndexed { index, uri ->
-                val next = ((pageRotations[uri] ?: 0) + 90) % 360
-                pageRotations[uri] = next
-                previews[index].rotation = next.toFloat()
+                pageRotations[uri] = ((pageRotations[uri] ?: 0) + 90) % 360
+                updatePreviewImage(previews[index], uri)
             }
         }
 
+        val createPdfBottom = actionButton("Tạo file PDF", green).apply {
+            textSize = 17f
+            minHeight = dp(58)
+        }
+        container.addView(createPdfBottom, fullWidth(bottom = 4))
+
         val scroll = ScrollView(this).apply { addView(container) }
 
-        AlertDialog.Builder(this)
+        dialog = AlertDialog.Builder(this)
             .setTitle("Kiểm tra hướng các trang")
             .setMessage("Xem lại từng ảnh trước khi tạo PDF. Có thể xoay riêng từng trang hoặc xoay tất cả.")
             .setView(scroll)
             .setNegativeButton("Quay lại", null)
-            .setPositiveButton("Tiếp tục lưu") { _, _ -> startSavePdf() }
-            .show()
+            .create()
+
+        val proceed = {
+            dialog.dismiss()
+            startSavePdf()
+        }
+        createPdf.setOnClickListener { proceed() }
+        createPdfBottom.setOnClickListener { proceed() }
+
+        dialog.show()
+    }
+
+    private fun updatePreviewImage(image: ImageView, uri: Uri) {
+        try {
+            val base = loadPreviewBitmap(uri)
+            val rotated = rotateForPdf(base, pageRotations[uri] ?: 0)
+            image.rotation = 0f
+            image.setImageBitmap(rotated)
+        } catch (_: Exception) {
+            image.setImageDrawable(null)
+        }
     }
 
     private fun loadPreviewBitmap(uri: Uri): Bitmap {
