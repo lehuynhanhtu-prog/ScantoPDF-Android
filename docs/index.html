@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#123b69">
+  <title>ScantoPDF - Tải ứng dụng</title>
+  <style>
+    :root{--navy:#123b69;--blue:#1d68bf;--green:#198754;--bg:#f5f7fb;--text:#1c2737;--muted:#627086;--card:#fff}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .hero{background:linear-gradient(135deg,#123b69,#1d68bf);color:white;padding:48px 20px}
+    .wrap{max-width:980px;margin:auto}
+    .brand{display:flex;align-items:center;gap:18px}
+    .icon{width:84px;height:84px;border-radius:22px;background:#0b55c8;display:grid;place-items:center;box-shadow:0 10px 30px #061b3740}
+    .scanner{width:54px;height:38px;border-radius:8px;background:#d7e7fa;position:relative}
+    .scanner:before{content:"";position:absolute;left:8px;right:8px;top:-20px;height:26px;background:#fff;border-radius:4px}
+    .scanner:after{content:"PDF";position:absolute;right:-13px;bottom:-12px;background:#e53935;color:white;font-weight:800;font-size:11px;padding:6px 7px;border-radius:7px}
+    h1{margin:0;font-size:38px}
+    .subtitle{margin:8px 0 0;color:#dce8f7;font-size:17px}
+    main{padding:30px 20px 50px}
+    .intro{background:white;border:1px solid #e1e7f0;border-radius:18px;padding:20px;margin-bottom:22px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+    .card{background:var(--card);border:1px solid #e1e7f0;border-radius:20px;padding:24px;box-shadow:0 8px 24px #2036500d}
+    .badge{display:inline-block;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;background:#edf4ff;color:#1556a0}
+    .card h2{font-size:24px;margin:14px 0 8px}
+    .card p{color:var(--muted);line-height:1.55}
+    .btn{display:block;text-align:center;text-decoration:none;color:#fff;font-weight:800;font-size:17px;padding:15px 18px;border-radius:14px;margin-top:20px}
+    .android{background:var(--green)}
+    .windows{background:var(--blue)}
+    ul{color:var(--muted);padding-left:20px;line-height:1.7}
+    .note{margin-top:22px;background:#fff8e8;border:1px solid #f2d78f;border-radius:14px;padding:15px;color:#664f17}
+    footer{text-align:center;color:#7c889b;padding:10px 20px 36px;font-size:13px}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}.hero{padding:34px 18px}.icon{width:68px;height:68px}h1{font-size:30px}}
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap brand">
+      <div class="icon"><div class="scanner"></div></div>
+      <div>
+        <h1>ScantoPDF</h1>
+        <p class="subtitle">Quét ảnh và tài liệu thành PDF — Android & Windows</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <strong>Phiên bản 1.0.0</strong>
+      <p>Chọn hoặc chụp nhiều ảnh, tự cắt mép, nắn phối cảnh, chỉnh 4 góc, xoay trang, chuyển Màu/Xám/B&W và xuất PDF A4 đứng hoặc ngang.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <span class="badge">ANDROID</span>
+        <h2>ScantoPDF APK</h2>
+        <p>Dành cho điện thoại và máy tính bảng Android. APK release đã ký để có thể cập nhật các bản sau.</p>
+        <ul>
+          <li>Chụp hoặc chọn nhiều ảnh</li>
+          <li>Tự cắt mép & nắn phối cảnh</li>
+          <li>Chỉnh 4 góc và xoay từng trang</li>
+          <li>Lưu PDF trên máy hoặc Cloud</li>
+        </ul>
+        <a class="btn android" href="https://github.com/lehuynhanhtu-prog/so-xe-to-chuc/releases/download/scantopdf-v1.0.0/ScantoPDF-Android.apk">Tải APK Android</a>
+      </article>
+
+      <article class="card">
+        <span class="badge">WINDOWS 10 / 11</span>
+        <h2>Windows Portable</h2>
+        <p>Một file EXE portable. Không cần cài Python, có thể chép sang máy Windows khác và chạy trực tiếp.</p>
+        <ul>
+          <li>Chọn nhiều ảnh hoặc chụp webcam</li>
+          <li>Tự cắt & chỉnh 4 góc</li>
+          <li>Màu / Xám / Trắng đen</li>
+          <li>Lưu vào ổ máy hoặc thư mục OneDrive/Drive</li>
+        </ul>
+        <a class="btn windows" href="https://github.com/lehuynhanhtu-prog/so-xe-to-chuc/releases/download/scantopdf-v1.0.0/ScantoPDF-Windows-Portable.exe">Tải Windows Portable</a>
+      </article>
+    </section>
+
+    <div class="note">
+      <strong>Lưu ý Windows:</strong> lần chạy đầu Windows SmartScreen có thể cảnh báo vì file chưa có chứng thư ký mã thương mại. Chọn <em>More info</em> → <em>Run anyway</em> nếu bạn tải từ trang chính thức này.
+    </div>
+  </main>
+
+  <footer>ScantoPDF • Trang tải chính thức</footer>
+</body>
+</html>
