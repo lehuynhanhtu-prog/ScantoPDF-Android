@@ -586,37 +586,73 @@ class MainActivity : Activity() {
             val initial = manualCorners[uri]
                 ?: DocumentProcessor.detectNormalizedCorners(bitmap)
                 ?: listOf(
-                    PointF(0.04f, 0.04f),
-                    PointF(0.96f, 0.04f),
-                    PointF(0.96f, 0.96f),
-                    PointF(0.04f, 0.96f)
+                    PointF(0.03f, 0.03f),
+                    PointF(0.97f, 0.03f),
+                    PointF(0.97f, 0.97f),
+                    PointF(0.03f, 0.97f)
                 )
 
             val editor = CornerAdjustView(this, bitmap, initial).apply {
-                minimumHeight = dp(480)
+                minimumHeight = dp(430)
             }
 
-            val dialog = AlertDialog.Builder(this)
+            val body = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+            }
+
+            lateinit var dialog: AlertDialog
+
+            val topActions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+
+            val exitButton = actionButton("Thoát không lưu", Color.rgb(108, 117, 125))
+            val autoButton = actionButton("Dùng tự động", blue)
+            val applyButton = actionButton("Áp dụng", green)
+
+            val weight = LinearLayout.LayoutParams(0, dp(52), 1f)
+            topActions.addView(exitButton, weight)
+            topActions.addView(Space(this), LinearLayout.LayoutParams(dp(6), 1))
+            topActions.addView(autoButton, weight)
+            topActions.addView(Space(this), LinearLayout.LayoutParams(dp(6), 1))
+            topActions.addView(applyButton, weight)
+
+            body.addView(topActions, fullWidth(bottom = 8))
+            body.addView(TextView(this).apply {
+                text = "Kéo 4 nút tròn vào đúng 4 góc trang giấy. Nếu nhận diện tự động sai, hãy chỉnh tay rồi bấm Áp dụng."
+                textSize = 13f
+                setTextColor(textSecondary)
+                setPadding(dp(4), 0, dp(4), dp(8))
+            }, fullWidth())
+            body.addView(editor, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(430)
+            ))
+
+            dialog = AlertDialog.Builder(this)
                 .setTitle("Chỉnh 4 góc tài liệu")
-                .setMessage("Kéo 4 nút tròn vào đúng 4 góc trang giấy. App sẽ cắt phần thừa và nắn ảnh thành hình chữ nhật.")
-                .setView(editor)
-                .setNegativeButton("Hủy", null)
-                .setNeutralButton("Dùng tự động", null)
-                .setPositiveButton("Áp dụng", null)
+                .setView(body)
                 .create()
 
-            dialog.setOnShowListener {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                    manualCorners[uri] = editor.normalizedCorners()
-                    updatePreviewImage(preview, uri)
-                    dialog.dismiss()
-                }
-                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                    manualCorners.remove(uri)
-                    updatePreviewImage(preview, uri)
-                    dialog.dismiss()
-                }
+            exitButton.setOnClickListener {
+                dialog.dismiss()
             }
+
+            autoButton.setOnClickListener {
+                manualCorners.remove(uri)
+                updatePreviewImage(preview, uri)
+                dialog.dismiss()
+            }
+
+            applyButton.setOnClickListener {
+                manualCorners[uri] = editor.normalizedCorners()
+                updatePreviewImage(preview, uri)
+                dialog.dismiss()
+            }
+
+            dialog.setCanceledOnTouchOutside(true)
             dialog.show()
         } catch (err: Exception) {
             toast("Không thể mở chỉnh góc: " + err.message)
