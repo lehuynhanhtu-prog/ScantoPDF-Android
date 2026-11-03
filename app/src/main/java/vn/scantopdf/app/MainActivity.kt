@@ -1,26 +1,28 @@
 package vn.scantopdf.app
 
 import android.app.Activity
-import android.os.Bundle
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
-import android.provider.MediaStore
-import android.provider.DocumentsContract
 import android.os.Build
-import android.app.AlertDialog
+import android.os.Bundle
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.view.Gravity
+import android.view.View
+import android.widget.*
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
-import android.widget.*
-import kotlin.math.min
 import kotlin.math.max
+import kotlin.math.min
 
 class MainActivity : Activity() {
     private val photos = mutableListOf<Uri>()
@@ -32,38 +34,134 @@ class MainActivity : Activity() {
     private val CAMERA = 12
     private var pendingCameraUri: Uri? = null
 
+    private val navy = Color.rgb(18, 59, 105)
+    private val blue = Color.rgb(29, 104, 191)
+    private val green = Color.rgb(25, 135, 84)
+    private val bg = Color.rgb(245, 247, 251)
+    private val card = Color.WHITE
+    private val textPrimary = Color.rgb(28, 39, 55)
+    private val textSecondary = Color.rgb(94, 108, 128)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 36, 32, 24)
-        }
-        val heading = TextView(this).apply { text = "ScantoPDF"; textSize = 28f; setTextColor(Color.rgb(22,75,125)) }
-        layout.addView(heading)
-        status = TextView(this).apply { text = "Chưa chọn ảnh"; textSize = 16f }
-        layout.addView(status)
 
-        val newScan = Button(this).apply { text = "Tạo scan mới" }
-        newScan.setOnClickListener { resetScanSession(showMessage = true) }
-        layout.addView(newScan)
-        val pick = Button(this).apply { text = "Duyệt ảnh từ thư mục / Cloud Drive" }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(28))
+            setBackgroundColor(bg)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = rounded(navy, 20f)
+        }
+        header.addView(TextView(this).apply {
+            text = "ScantoPDF"
+            textSize = 28f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        header.addView(TextView(this).apply {
+            text = "Quét ảnh và tài liệu thành PDF"
+            textSize = 15f
+            setTextColor(Color.rgb(220, 232, 247))
+            setPadding(0, dp(4), 0, 0)
+        })
+        content.addView(header, fullWidth(bottom = 16))
+
+        val statusCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = rounded(card, 18f, strokeColor = Color.rgb(225, 231, 240))
+        }
+        statusCard.addView(TextView(this).apply {
+            text = "TÀI LIỆU HIỆN TẠI"
+            textSize = 12f
+            setTextColor(textSecondary)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        status = TextView(this).apply {
+            text = "Chưa có trang nào"
+            textSize = 20f
+            setTextColor(textPrimary)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, dp(6), 0, 0)
+        }
+        statusCard.addView(status)
+        statusCard.addView(TextView(this).apply {
+            text = "Chọn ảnh mới sẽ bắt đầu một PDF mới. Chụp ảnh sẽ thêm trang vào tài liệu hiện tại."
+            textSize = 13f
+            setTextColor(textSecondary)
+            setPadding(0, dp(6), 0, 0)
+        })
+        content.addView(statusCard, fullWidth(bottom = 16))
+
+        val sourceCard = sectionCard("Nguồn tài liệu")
+        val pick = actionButton("Chọn ảnh mới từ máy / Cloud", blue)
         pick.setOnClickListener { openImageBrowser() }
-        layout.addView(pick)
-        val camera = Button(this).apply { text = "Chụp tài liệu / Thêm trang" }
+        sourceCard.addView(pick, fullWidth(bottom = 10))
+
+        val camera = actionButton("Chụp tài liệu / Thêm trang", navy)
         camera.setOnClickListener { captureDocumentPage() }
-        layout.addView(camera)
-        mode = Spinner(this)
-        mode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("Màu", "Xám", "Trắng đen (B&W)"))
-        layout.addView(TextView(this).apply { text = "Chế độ xuất" })
-        layout.addView(mode)
-        quality = Spinner(this)
-        quality.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("Nhẹ", "Cân bằng", "Sắc nét"))
-        quality.setSelection(1)
-        layout.addView(TextView(this).apply { text = "Chất lượng PDF" })
-        layout.addView(quality)
-        val export = Button(this).apply { text = "Xuất PDF / Lưu vào Drive, OneDrive, máy" }
+        sourceCard.addView(camera, fullWidth(bottom = 10))
+
+        val newScan = actionButton("Xóa trang hiện tại / Tạo scan mới", Color.rgb(108, 117, 125))
+        newScan.setOnClickListener {
+            if (photos.isEmpty()) {
+                resetScanSession(showMessage = true)
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Tạo scan mới?")
+                    .setMessage("Toàn bộ trang đang chọn sẽ bị xóa khỏi phiên hiện tại.")
+                    .setNegativeButton("Hủy", null)
+                    .setPositiveButton("Tạo mới") { _, _ -> resetScanSession(showMessage = true) }
+                    .show()
+            }
+        }
+        sourceCard.addView(newScan, fullWidth())
+        content.addView(sourceCard, fullWidth(bottom = 16))
+
+        val outputCard = sectionCard("Thiết lập PDF")
+        outputCard.addView(fieldLabel("Chế độ màu"))
+        mode = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Màu", "Xám", "Trắng đen (B&W)")
+            )
+            background = rounded(Color.rgb(248, 250, 253), 12f, strokeColor = Color.rgb(218, 225, 235))
+            setPadding(dp(12), 0, dp(12), 0)
+        }
+        outputCard.addView(mode, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+        ).apply { bottomMargin = dp(12) })
+
+        outputCard.addView(fieldLabel("Chất lượng PDF"))
+        quality = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Nhẹ", "Cân bằng", "Sắc nét")
+            )
+            setSelection(1)
+            background = rounded(Color.rgb(248, 250, 253), 12f, strokeColor = Color.rgb(218, 225, 235))
+            setPadding(dp(12), 0, dp(12), 0)
+        }
+        outputCard.addView(quality, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+        ))
+        content.addView(outputCard, fullWidth(bottom = 16))
+
+        val export = actionButton("Tạo và lưu PDF", green).apply {
+            textSize = 17f
+            minHeight = dp(58)
+        }
         export.setOnClickListener {
-            if (photos.isEmpty()) { toast("Hãy chọn ảnh trước"); return@setOnClickListener }
+            if (photos.isEmpty()) {
+                toast("Hãy chọn ảnh hoặc chụp tài liệu trước")
+                return@setOnClickListener
+            }
             startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/pdf"
@@ -73,12 +171,21 @@ class MainActivity : Activity() {
                 addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }, SAVE)
         }
-        layout.addView(export)
-        val help = TextView(this).apply {
-            text = "Có thể duyệt ảnh từ thư mục/cloud hoặc chụp tài liệu từng trang bằng máy ảnh. Mỗi ảnh được thêm thành một trang PDF theo thứ tự đã thêm."
-        }
-        layout.addView(help)
-        setContentView(ScrollView(this).apply { addView(layout) })
+        content.addView(export, fullWidth(bottom = 12))
+
+        content.addView(TextView(this).apply {
+            text = "PDF tự xoay A4 ngang/dọc theo từng ảnh và giữ đúng tỷ lệ."
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(textSecondary)
+        }, fullWidth())
+
+        setContentView(ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+            setBackgroundColor(bg)
+        })
+
         if (intent?.action == Intent.ACTION_SEND) {
             intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { photos.add(it) }
         } else if (intent?.action == Intent.ACTION_SEND_MULTIPLE) {
@@ -86,6 +193,62 @@ class MainActivity : Activity() {
         }
         refresh()
     }
+
+    private fun sectionCard(title: String): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(18))
+            background = rounded(card, 18f, strokeColor = Color.rgb(225, 231, 240))
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                textSize = 17f
+                setTextColor(textPrimary)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, 0, 0, dp(12))
+            })
+        }
+    }
+
+    private fun fieldLabel(label: String): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 13f
+            setTextColor(textSecondary)
+            setPadding(0, 0, 0, dp(6))
+        }
+    }
+
+    private fun actionButton(label: String, color: Int): Button {
+        return Button(this).apply {
+            text = label
+            textSize = 15f
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = rounded(color, 14f)
+            minHeight = dp(52)
+            stateListAnimator = null
+        }
+    }
+
+    private fun fullWidth(bottom: Int = 0): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(bottom) }
+    }
+
+    private fun rounded(fillColor: Int, radiusDp: Float, strokeColor: Int? = null): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(fillColor)
+            cornerRadius = dp(radiusDp.toInt()).toFloat()
+            if (strokeColor != null) setStroke(dp(1), strokeColor)
+        }
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
     private fun captureDocumentPage() {
         val captureDir = File(cacheDir, "captured").apply { mkdirs() }
         val photoFile = File.createTempFile("page_", ".jpg", captureDir)
@@ -96,15 +259,15 @@ class MainActivity : Activity() {
         )
         pendingCameraUri = uri
 
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+        val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
             putExtra(MediaStore.EXTRA_OUTPUT, uri)
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             clipData = android.content.ClipData.newRawUri("ScantoPDF capture", uri)
         }
 
-        if (intent.resolveActivity(packageManager) != null) {
-            startActivityForResult(intent, CAMERA)
+        if (cameraIntent.resolveActivity(packageManager) != null) {
+            startActivityForResult(cameraIntent, CAMERA)
         } else {
             pendingCameraUri = null
             photoFile.delete()
@@ -113,7 +276,7 @@ class MainActivity : Activity() {
     }
 
     private fun openImageBrowser() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        val pickerIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/*"
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -133,7 +296,7 @@ class MainActivity : Activity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
-        startActivityForResult(intent, PICK)
+        startActivityForResult(pickerIntent, PICK)
     }
 
     private fun addPhoto(uri: Uri) {
@@ -145,7 +308,7 @@ class MainActivity : Activity() {
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-        } catch (_: SecurityException) {
+        } catch (_: Exception) {
         }
     }
 
@@ -154,24 +317,23 @@ class MainActivity : Activity() {
         pendingCameraUri = null
         File(cacheDir, "captured").listFiles()?.forEach { it.delete() }
         refresh()
-        if (showMessage) toast("Đã bắt đầu scan mới")
+        if (showMessage) toast("Đã bắt đầu tài liệu mới")
     }
 
     private fun showCreatingDialog(): AlertDialog {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(48, 40, 48, 40)
+            setPadding(dp(36), dp(32), dp(36), dp(32))
         }
-        val progress = ProgressBar(this).apply { isIndeterminate = true }
-        val message = TextView(this).apply {
+        box.addView(ProgressBar(this).apply { isIndeterminate = true })
+        box.addView(TextView(this).apply {
             text = "Đang tạo PDF...\nVui lòng không đóng ứng dụng."
             textSize = 18f
+            setTextColor(textPrimary)
             gravity = Gravity.CENTER
-            setPadding(0, 24, 0, 0)
-        }
-        box.addView(progress)
-        box.addView(message)
+            setPadding(0, dp(20), 0, 0)
+        })
 
         return AlertDialog.Builder(this)
             .setTitle("Đang xử lý tài liệu")
@@ -203,26 +365,57 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun refresh() { status.text = if (photos.isEmpty()) "Chưa chọn ảnh" else "Đã chọn ${photos.size} ảnh" }
-    private fun toast(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+    private fun refresh() {
+        status.text = when (photos.size) {
+            0 -> "Chưa có trang nào"
+            1 -> "1 trang đã sẵn sàng"
+            else -> "${photos.size} trang đã sẵn sàng"
+        }
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    override fun onBackPressed() {
+        val message = if (photos.isNotEmpty()) {
+            "Bạn đang có ${photos.size} trang chưa xuất PDF. Thoát ứng dụng sẽ bỏ phiên làm việc hiện tại."
+        } else {
+            "Bạn có chắc muốn thoát ScantoPDF?"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Xác nhận thoát")
+            .setMessage(message)
+            .setNegativeButton("Ở lại", null)
+            .setPositiveButton("Thoát") { _, _ -> super.onBackPressed() }
+            .show()
+    }
+
     @Deprecated("Activity result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
+
         if (requestCode == CAMERA) {
             pendingCameraUri?.let { addPhoto(it) }
             pendingCameraUri = null
             refresh()
-            toast("Đã thêm trang chụp. Có thể chụp tiếp hoặc xuất PDF.")
+            toast("Đã thêm một trang chụp")
             return
         }
 
         if (requestCode == PICK) {
+            resetScanSession(showMessage = false)
             data?.clipData?.let { clip ->
-                for (i in 0 until clip.itemCount) addPhoto(clip.getItemAt(i).uri)
+                for (i in 0 until clip.itemCount) {
+                    addPhoto(clip.getItemAt(i).uri)
+                }
             } ?: data?.data?.let { addPhoto(it) }
             refresh()
+            toast("Đã bắt đầu PDF mới với ${photos.size} ảnh")
+            return
         }
+
         if (requestCode == SAVE) {
             val target = data?.data ?: return
             try {
@@ -242,20 +435,35 @@ class MainActivity : Activity() {
                     val pdf = PdfDocument()
                     for ((index, uri) in pageUris.withIndex()) {
                         runOnUiThread {
-                            status.text = "Đang tạo PDF: trang ${index + 1}/${pageUris.size}"
+                            status.text = "Đang tạo trang ${index + 1}/${pageUris.size}"
                         }
                         val bitmap = loadBitmap(uri)
                         val processed = process(bitmap)
                         val isLandscape = processed.width > processed.height
                         val w = if (isLandscape) 842 else 595
                         val h = if (isLandscape) 595 else 842
-                        val page = pdf.startPage(PdfDocument.PageInfo.Builder(w, h, index + 1).create())
-                        val scale = min(w.toFloat() / processed.width, h.toFloat() / processed.height)
+                        val page = pdf.startPage(
+                            PdfDocument.PageInfo.Builder(w, h, index + 1).create()
+                        )
+                        val scale = min(
+                            w.toFloat() / processed.width,
+                            h.toFloat() / processed.height
+                        )
                         val dw = processed.width * scale
                         val dh = processed.height * scale
-                        val rect = android.graphics.RectF((w-dw)/2, (h-dh)/2, (w+dw)/2, (h+dh)/2)
+                        val rect = android.graphics.RectF(
+                            (w - dw) / 2,
+                            (h - dh) / 2,
+                            (w + dw) / 2,
+                            (h + dh) / 2
+                        )
                         page.canvas.drawColor(Color.WHITE)
-                        page.canvas.drawBitmap(processed, null, rect, Paint(Paint.FILTER_BITMAP_FLAG))
+                        page.canvas.drawBitmap(
+                            processed,
+                            null,
+                            rect,
+                            Paint(Paint.FILTER_BITMAP_FLAG)
+                        )
                         pdf.finishPage(page)
                         if (processed !== bitmap) processed.recycle()
                         bitmap.recycle()
@@ -286,9 +494,12 @@ class MainActivity : Activity() {
             }.start()
         }
     }
+
     private fun loadBitmap(uri: Uri): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
+        contentResolver.openInputStream(uri)!!.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        }
 
         var sample = 1
         val maxDimension = when (quality.selectedItemPosition) {
@@ -296,7 +507,9 @@ class MainActivity : Activity() {
             1 -> 1900
             else -> 2600
         }
-        while (max(bounds.outWidth, bounds.outHeight) / sample > maxDimension * 2) sample *= 2
+        while (max(bounds.outWidth, bounds.outHeight) / sample > maxDimension * 2) {
+            sample *= 2
+        }
 
         val opts = BitmapFactory.Options().apply {
             inSampleSize = sample
@@ -349,39 +562,62 @@ class MainActivity : Activity() {
         if (rotated !== decoded) decoded.recycle()
         return rotated
     }
+
     private fun process(source: Bitmap): Bitmap {
         val selected = mode.selectedItemPosition
         if (selected == 0) return source
-        val result = source.copy(Bitmap.Config.ARGB_8888,true)
+
+        val result = source.copy(Bitmap.Config.ARGB_8888, true)
         val width = result.width
         val pixels = IntArray(width * result.height)
-        result.getPixels(pixels,0,width,0,0,width,result.height)
+        result.getPixels(pixels, 0, width, 0, 0, width, result.height)
+
         val histogram = IntArray(256)
         for (p in pixels) {
-            val gray = (Color.red(p)*299 + Color.green(p)*587 + Color.blue(p)*114)/1000
+            val gray = (
+                Color.red(p) * 299 +
+                    Color.green(p) * 587 +
+                    Color.blue(p) * 114
+                ) / 1000
             histogram[gray]++
         }
+
         val total = pixels.size
         var sum = 0.0
         for (i in 0..255) sum += i * histogram[i]
-        var background = 0; var foreground = 0.0; var best = -1.0; var threshold = 127
+
+        var background = 0
+        var foreground = 0.0
+        var best = -1.0
+        var threshold = 127
+
         for (i in 0..255) {
             background += histogram[i]
             if (background == 0) continue
             val front = total - background
             if (front == 0) break
+
             foreground += i * histogram[i]
-            val diff = foreground/background - (sum-foreground)/front
-            val score = background.toDouble()*front*diff*diff
-            if (score > best) { best = score; threshold = i }
+            val diff = foreground / background - (sum - foreground) / front
+            val score = background.toDouble() * front * diff * diff
+            if (score > best) {
+                best = score
+                threshold = i
+            }
         }
+
         for (i in pixels.indices) {
             val p = pixels[i]
-            var gray = (Color.red(p)*299 + Color.green(p)*587 + Color.blue(p)*114)/1000
+            var gray = (
+                Color.red(p) * 299 +
+                    Color.green(p) * 587 +
+                    Color.blue(p) * 114
+                ) / 1000
             if (selected == 2) gray = if (gray > threshold) 255 else 0
-            pixels[i] = Color.rgb(gray,gray,gray)
+            pixels[i] = Color.rgb(gray, gray, gray)
         }
-        result.setPixels(pixels,0,width,0,0,width,result.height)
+
+        result.setPixels(pixels, 0, width, 0, 0, width, result.height)
         return result
     }
 }
