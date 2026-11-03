@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private lateinit var quality: Spinner
     private val PICK = 10
     private val SAVE = 11
+    private val SAVE_CLOUD = 13
     private val CAMERA = 12
     private var pendingCameraUri: Uri? = null
 
@@ -341,7 +342,13 @@ class MainActivity : Activity() {
     private fun savedFileDescription(uri: Uri): String {
         var name = "ScantoPDF.pdf"
         try {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (index >= 0) name = cursor.getString(index)
@@ -350,30 +357,87 @@ class MainActivity : Activity() {
         } catch (_: Exception) {
         }
 
-        val location = try {
+        val authority = uri.authority.orEmpty()
+        val documentId = try {
             if (android.provider.DocumentsContract.isDocumentUri(this, uri)) {
                 android.provider.DocumentsContract.getDocumentId(uri)
-            } else {
-                uri.toString()
-            }
+            } else null
         } catch (_: Exception) {
-            uri.toString()
+            null
         }
 
-        return "Tên file: $name\nVị trí: $location"
+        val path = when {
+            documentId != null && authority == "com.android.externalstorage.documents" -> {
+                val parts = documentId.split(":", limit = 2)
+                if (parts.size == 2) {
+                    val volume = parts[0]
+                    val relative = parts[1]
+                    if (volume.equals("primary", ignoreCase = true)) {
+                        "/storage/emulated/0/$relative"
+                    } else {
+                        "/storage/$volume/$relative"
+                    }
+                } else {
+                    documentId
+                }
+            }
+            documentId != null && authority.contains("downloads", ignoreCase = true) -> {
+                val cleanId = documentId.removePrefix("raw:")
+                if (cleanId.startsWith("/")) cleanId else "/storage/emulated/0/Download/$name"
+            }
+            authority.contains("drive", ignoreCase = true) ||
+                authority.contains("docs", ignoreCase = true) ||
+                authority.contains("onedrive", ignoreCase = true) -> {
+                "Cloud: $authority / ${documentId ?: name}"
+            }
+            documentId != null -> "$authority / $documentId"
+            uri.scheme == "file" -> uri.path ?: uri.toString()
+            else -> uri.toString()
+        }
+
+        return "Đã tạo PDF thành công\n\nTên file: $name\nĐường dẫn: $path"
     }
 
-    private fun startSavePdf() {
-        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+    private fun startSavePdf(requestCode: Int) {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/pdf"
             putExtra(Intent.EXTRA_TITLE, "ScantoPDF.pdf")
+            putExtra(Intent.EXTRA_LOCAL_ONLY, false)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }, SAVE)
+        }
+
+        if (requestCode == SAVE_CLOUD) {
+            AlertDialog.Builder(this)
+                .setTitle("Lưu lên Cloud")
+                .setMessage(
+                    "Trong màn hình tiếp theo, chọn Google Drive, OneDrive hoặc nhà cung cấp Cloud " +
+                        "ở menu vị trí lưu."
+                )
+                .setPositiveButton("Tiếp tục") { _, _ ->
+                    startActivityForResult(intent, SAVE_CLOUD)
+                }
+                .setNegativeButton("Hủy", null)
+                .show()
+        } else {
+            startActivityForResult(intent, SAVE)
+        }
     }
 
+    private fun chooseSaveDestination() {
+        AlertDialog.Builder(this)
+            .setTitle("Chọn nơi lưu PDF")
+            .setItems(arrayOf("Lưu trên máy", "Lưu lên Cloud (Drive / OneDrive)")) { _, which ->
+                when (which) {
+                    0 -> startSavePdf(SAVE)
+                    1 -> startSavePdf(SAVE_CLOUD)
+                }
+            }
+            .setNegativeButton("Hủy", null)
+            .show()
+    }
     private fun showPageReviewDialog() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -458,7 +522,7 @@ class MainActivity : Activity() {
 
         val proceed = {
             dialog.dismiss()
-            startSavePdf()
+            chooseSaveDestination()
         }
         createPdf.setOnClickListener { proceed() }
         createPdfBottom.setOnClickListener { proceed() }
@@ -582,7 +646,7 @@ class MainActivity : Activity() {
             return
         }
 
-        if (requestCode == SAVE) {
+        if (requestCode == SAVE || requestCode == SAVE_CLOUD) {
             val target = data?.data ?: return
             try {
                 val flags = data.flags and
