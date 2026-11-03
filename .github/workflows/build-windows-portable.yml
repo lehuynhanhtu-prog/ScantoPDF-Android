@@ -1,0 +1,60 @@
+name: Build Windows Portable
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows-portable/**'
+      - '.github/workflows/build-windows-portable.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: windows-portable/requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r windows-portable/requirements.txt
+
+      - name: Generate app icon
+        working-directory: windows-portable
+        shell: pwsh
+        run: python make_icon.py
+
+      - name: Build one-file portable EXE
+        working-directory: windows-portable
+        shell: pwsh
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name ScantoPDF-Windows-Portable --icon ScantoPDF.ico --collect-all cv2 ScantoPDF.py
+
+      - name: Verify EXE
+        shell: pwsh
+        run: |
+          $exe = 'windows-portable/dist/ScantoPDF-Windows-Portable.exe'
+          if (!(Test-Path $exe)) { throw 'Portable EXE not found' }
+          Get-Item $exe | Format-List Name,Length,FullName
+          Get-FileHash $exe -Algorithm SHA256
+
+      - name: Upload Windows portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScantoPDF-Windows-Portable
+          path: windows-portable/dist/ScantoPDF-Windows-Portable.exe
+          if-no-files-found: error
+          retention-days: 30
