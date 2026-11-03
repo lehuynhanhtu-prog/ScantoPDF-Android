@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Matrix
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.provider.MediaStore
@@ -15,6 +16,7 @@ import android.os.Build
 import android.app.AlertDialog
 import android.view.Gravity
 import androidx.core.content.FileProvider
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import android.widget.*
 import kotlin.math.min
@@ -244,8 +246,9 @@ class MainActivity : Activity() {
                         }
                         val bitmap = loadBitmap(uri)
                         val processed = process(bitmap)
-                        val w = 595
-                        val h = 842
+                        val isLandscape = processed.width > processed.height
+                        val w = if (isLandscape) 842 else 595
+                        val h = if (isLandscape) 595 else 842
                         val page = pdf.startPage(PdfDocument.PageInfo.Builder(w, h, index + 1).create())
                         val scale = min(w.toFloat() / processed.width, h.toFloat() / processed.height)
                         val dw = processed.width * scale
@@ -285,12 +288,66 @@ class MainActivity : Activity() {
     }
     private fun loadBitmap(uri: Uri): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it,null,bounds) }
+        contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
+
         var sample = 1
-        val maxDimension = when (quality.selectedItemPosition) { 0 -> 1300; 1 -> 1900; else -> 2600 }
-        while (max(bounds.outWidth,bounds.outHeight)/sample > maxDimension*2) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
-        return contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it,null,opts) } ?: error("Ảnh không hợp lệ")
+        val maxDimension = when (quality.selectedItemPosition) {
+            0 -> 1300
+            1 -> 1900
+            else -> 2600
+        }
+        while (max(bounds.outWidth, bounds.outHeight) / sample > maxDimension * 2) sample *= 2
+
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+
+        val decoded = contentResolver.openInputStream(uri)!!.use {
+            BitmapFactory.decodeStream(it, null, opts)
+        } ?: error("Ảnh không hợp lệ")
+
+        val orientation = try {
+            contentResolver.openInputStream(uri)!!.use {
+                ExifInterface(it).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            }
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.preScale(-1f, 1f)
+                matrix.postRotate(270f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.preScale(-1f, 1f)
+                matrix.postRotate(90f)
+            }
+        }
+
+        if (matrix.isIdentity) return decoded
+
+        val rotated = Bitmap.createBitmap(
+            decoded,
+            0,
+            0,
+            decoded.width,
+            decoded.height,
+            matrix,
+            true
+        )
+        if (rotated !== decoded) decoded.recycle()
+        return rotated
     }
     private fun process(source: Bitmap): Bitmap {
         val selected = mode.selectedItemPosition
