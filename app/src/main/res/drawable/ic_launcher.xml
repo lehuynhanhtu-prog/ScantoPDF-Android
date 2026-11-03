@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Rounded blue app tile -->
+    <path
+        android:fillColor="#0B55C8"
+        android:pathData="M22,4 H86 C96,4 104,12 104,22 V86 C104,96 96,104 86,104 H22 C12,104 4,96 4,86 V22 C4,12 12,4 22,4 Z" />
+
+    <!-- Scan frame corners -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M20,28 V20 H28 M80,20 H88 V28 M20,80 V88 H28 M80,88 H88 V80" />
+
+    <!-- Scanner lid -->
+    <path
+        android:fillColor="#EAF4FF"
+        android:pathData="M29,32 L79,32 L86,43 L22,43 Z" />
+    <path
+        android:fillColor="#BFD8F8"
+        android:pathData="M25,43 H83 L77,50 H31 Z" />
+
+    <!-- Paper -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,47 H74 V76 H34 Z" />
+    <path
+        android:fillColor="#9CCBFF"
+        android:pathData="M40,54 H68 V57 H40 Z M40,61 H65 V64 H40 Z M40,68 H58 V71 H40 Z" />
+
+    <!-- Scanner body -->
+    <path
+        android:fillColor="#D7E7FA"
+        android:pathData="M23,48 H85 L80,76 H28 Z" />
+    <path
+        android:fillColor="#123E78"
+        android:pathData="M28,50 H80 L76,57 H32 Z" />
+
+    <!-- Cyan scan light -->
+    <path
+        android:fillColor="#2BE5FF"
+        android:pathData="M31,48 H77 V51 H31 Z" />
+
+    <!-- Re-draw paper above body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,52 H72 V78 H36 Z" />
+    <path
+        android:fillColor="#7EBBFA"
+        android:pathData="M41,58 H67 V61 H41 Z M41,65 H64 V68 H41 Z M41,72 H57 V75 H41 Z" />
+
+    <!-- PDF badge -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M66,65 H89 C92,65 94,67 94,70 V88 C94,91 92,93 89,93 H66 C63,93 61,91 61,88 V70 C61,67 63,65 66,65 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65,72 H90 V87 H65 Z" />
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M67,75 H71 C75,75 77,77 77,80 C77,83 75,85 71,85 H69 V88 H67 Z M69,78 V82 H71 C73,82 74,81 74,80 C74,79 73,78 71,78 Z
+                          M79,75 H83 C87,75 89,77 89,81 C89,85 87,88 83,88 H79 Z M82,78 V85 H83 C85,85 86,84 86,81 C86,79 85,78 83,78 Z" />
+</vector>
