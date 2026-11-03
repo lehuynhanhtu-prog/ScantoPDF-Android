@@ -570,10 +570,15 @@ class MainActivity : Activity() {
                         }
                         val bitmap = loadBitmap(uri)
                         val processed = process(bitmap)
-                        val finalBitmap = rotateForPdf(processed, pageRotations[uri] ?: 0)
-                        val isLandscape = finalBitmap.width > finalBitmap.height
-                        val w = if (isLandscape) 842 else 595
-                        val h = if (isLandscape) 595 else 842
+                        val manualRotation = ((pageRotations[uri] ?: 0) % 360 + 360) % 360
+                        val finalBitmap = rotateForPdf(processed, manualRotation)
+
+                        val baseLandscape = processed.width > processed.height
+                        val quarterTurn = manualRotation == 90 || manualRotation == 270
+                        val pageLandscape = if (quarterTurn) !baseLandscape else baseLandscape
+
+                        val w = if (pageLandscape) 842 else 595
+                        val h = if (pageLandscape) 595 else 842
                         val page = pdf.startPage(
                             PdfDocument.PageInfo.Builder(w, h, index + 1).create()
                         )
