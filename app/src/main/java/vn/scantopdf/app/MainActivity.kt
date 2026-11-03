@@ -9,6 +9,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.provider.MediaStore
+import androidx.core.content.FileProvider
+import java.io.File
 import android.widget.*
 import kotlin.math.min
 import kotlin.math.max
@@ -20,6 +23,8 @@ class MainActivity : Activity() {
     private lateinit var quality: Spinner
     private val PICK = 10
     private val SAVE = 11
+    private val CAMERA = 12
+    private var pendingCameraUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,6 +39,9 @@ class MainActivity : Activity() {
         val pick = Button(this).apply { text = "Duyệt ảnh từ thư mục / Cloud Drive" }
         pick.setOnClickListener { openImageBrowser() }
         layout.addView(pick)
+        val camera = Button(this).apply { text = "Chụp tài liệu / Thêm trang" }
+        camera.setOnClickListener { captureDocumentPage() }
+        layout.addView(camera)
         mode = Spinner(this)
         mode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, listOf("Màu", "Xám", "Trắng đen (B&W)"))
         layout.addView(TextView(this).apply { text = "Chế độ xuất" })
@@ -54,7 +62,7 @@ class MainActivity : Activity() {
         }
         layout.addView(export)
         val help = TextView(this).apply {
-            text = "Có thể duyệt ảnh từ bất kỳ thư mục nào trên máy hoặc nhà cung cấp tệp như Google Drive/OneDrive đã cài. Bộ chọn chỉ hiển thị file ảnh. Có thể mở lại nhiều lần để thêm ảnh từ các thư mục khác nhau."
+            text = "Có thể duyệt ảnh từ thư mục/cloud hoặc chụp tài liệu từng trang bằng máy ảnh. Mỗi ảnh được thêm thành một trang PDF theo thứ tự đã thêm."
         }
         layout.addView(help)
         setContentView(ScrollView(this).apply { addView(layout) })
@@ -65,6 +73,32 @@ class MainActivity : Activity() {
         }
         refresh()
     }
+    private fun captureDocumentPage() {
+        val captureDir = File(cacheDir, "captured").apply { mkdirs() }
+        val photoFile = File.createTempFile("page_", ".jpg", captureDir)
+        val uri = FileProvider.getUriForFile(
+            this,
+            "vn.scantopdf.app.fileprovider",
+            photoFile
+        )
+        pendingCameraUri = uri
+
+        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newRawUri("ScantoPDF capture", uri)
+        }
+
+        if (intent.resolveActivity(packageManager) != null) {
+            startActivityForResult(intent, CAMERA)
+        } else {
+            pendingCameraUri = null
+            photoFile.delete()
+            toast("Không tìm thấy ứng dụng máy ảnh")
+        }
+    }
+
     private fun openImageBrowser() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -107,15 +141,23 @@ class MainActivity : Activity() {
     @Deprecated("Activity result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK || data == null) return
+        if (resultCode != RESULT_OK) return
+        if (requestCode == CAMERA) {
+            pendingCameraUri?.let { addPhoto(it) }
+            pendingCameraUri = null
+            refresh()
+            toast("Đã thêm trang chụp. Có thể chụp tiếp hoặc xuất PDF.")
+            return
+        }
+
         if (requestCode == PICK) {
-            data.clipData?.let { clip ->
+            data?.clipData?.let { clip ->
                 for (i in 0 until clip.itemCount) addPhoto(clip.getItemAt(i).uri)
-            } ?: data.data?.let { addPhoto(it) }
+            } ?: data?.data?.let { addPhoto(it) }
             refresh()
         }
         if (requestCode == SAVE) {
-            val target = data.data ?: return
+            val target = data?.data ?: return
             status.text = "Đang tạo PDF..."
             Thread {
                 try {
