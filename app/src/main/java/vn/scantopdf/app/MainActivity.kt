@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
@@ -25,9 +26,11 @@ import kotlin.math.min
 class MainActivity : Activity() {
     private val photos = mutableListOf<Uri>()
     private val pageRotations = mutableMapOf<Uri, Int>()
+    private val manualCorners = mutableMapOf<Uri, List<PointF>>()
     private lateinit var status: TextView
     private lateinit var mode: Spinner
     private lateinit var quality: Spinner
+    private lateinit var autoCorrect: CheckBox
     private val PICK = 10
     private val SAVE = 11
     private val SAVE_CLOUD = 13
@@ -44,6 +47,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DocumentProcessor.init()
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -150,7 +154,22 @@ class MainActivity : Activity() {
         }
         outputCard.addView(quality, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
-        ))
+        ).apply { bottomMargin = dp(10) })
+
+        autoCorrect = CheckBox(this).apply {
+            text = "Tự động cắt mép và nắn thẳng tài liệu"
+            textSize = 14f
+            setTextColor(textPrimary)
+            isChecked = true
+            setPadding(0, dp(4), 0, 0)
+        }
+        outputCard.addView(autoCorrect, fullWidth())
+        outputCard.addView(TextView(this).apply {
+            text = "Tự tìm 4 góc giấy, bỏ nền thừa và chỉnh phối cảnh. Có thể chỉnh 4 góc thủ công ở bước kiểm tra."
+            textSize = 12f
+            setTextColor(textSecondary)
+            setPadding(dp(4), dp(2), 0, 0)
+        }, fullWidth())
         content.addView(outputCard, fullWidth(bottom = 16))
 
         val export = actionButton("Tạo và lưu PDF", green).apply {
@@ -311,6 +330,7 @@ class MainActivity : Activity() {
     private fun resetScanSession(showMessage: Boolean = false) {
         photos.clear()
         pageRotations.clear()
+        manualCorners.clear()
         pendingCameraUri = null
         File(cacheDir, "captured").listFiles()?.forEach { it.delete() }
         refresh()
@@ -494,6 +514,12 @@ class MainActivity : Activity() {
                 ).apply { bottomMargin = dp(8) }
             )
 
+            val editCorners = actionButton("Chỉnh 4 góc / Cắt mép", blue)
+            editCorners.setOnClickListener {
+                showCornerEditor(uri, image)
+            }
+            row.addView(editCorners, fullWidth(bottom = 8))
+
             val rotateOne = actionButton("Xoay trang 90°", navy)
             rotateOne.setOnClickListener {
                 pageRotations[uri] = ((pageRotations[uri] ?: 0) + 90) % 360
@@ -539,7 +565,14 @@ class MainActivity : Activity() {
     private fun updatePreviewImage(image: ImageView, uri: Uri) {
         try {
             val base = loadPreviewBitmap(uri)
-            val rotated = rotateForPdf(base, pageRotations[uri] ?: 0)
+            val corrected = when {
+                manualCorners[uri] != null ->
+                    DocumentProcessor.warpNormalized(base, manualCorners[uri]!!)
+                autoCorrect.isChecked ->
+                    DocumentProcessor.autoCorrect(base)
+                else -> base
+            }
+            val rotated = rotateForPdf(corrected, pageRotations[uri] ?: 0)
             image.rotation = 0f
             image.setImageBitmap(rotated)
         } catch (_: Exception) {
@@ -547,6 +580,48 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun showCornerEditor(uri: Uri, preview: ImageView) {
+        try {
+            val bitmap = loadPreviewBitmap(uri)
+            val initial = manualCorners[uri]
+                ?: DocumentProcessor.detectNormalizedCorners(bitmap)
+                ?: listOf(
+                    PointF(0.04f, 0.04f),
+                    PointF(0.96f, 0.04f),
+                    PointF(0.96f, 0.96f),
+                    PointF(0.04f, 0.96f)
+                )
+
+            val editor = CornerAdjustView(this, bitmap, initial).apply {
+                minimumHeight = dp(480)
+            }
+
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Chỉnh 4 góc tài liệu")
+                .setMessage("Kéo 4 nút tròn vào đúng 4 góc trang giấy. App sẽ cắt phần thừa và nắn ảnh thành hình chữ nhật.")
+                .setView(editor)
+                .setNegativeButton("Hủy", null)
+                .setNeutralButton("Dùng tự động", null)
+                .setPositiveButton("Áp dụng", null)
+                .create()
+
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    manualCorners[uri] = editor.normalizedCorners()
+                    updatePreviewImage(preview, uri)
+                    dialog.dismiss()
+                }
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                    manualCorners.remove(uri)
+                    updatePreviewImage(preview, uri)
+                    dialog.dismiss()
+                }
+            }
+            dialog.show()
+        } catch (err: Exception) {
+            toast("Không thể mở chỉnh góc: " + err.message)
+        }
+    }
     private fun loadPreviewBitmap(uri: Uri): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -694,6 +769,8 @@ class MainActivity : Activity() {
     private fun createPdfAt(target: Uri) {
         val pageUris = photos.toList()
         val rotations = pageRotations.toMap()
+        val corners = manualCorners.toMap()
+        val useAutoCorrect = autoCorrect.isChecked
         val dialog = showCreatingDialog()
         dialog.show()
         status.text = "Đang tạo PDF..."
@@ -706,7 +783,14 @@ class MainActivity : Activity() {
                         status.text = "Đang tạo trang ${index + 1}/${pageUris.size}"
                     }
                     val bitmap = loadBitmap(uri)
-                    val processed = process(bitmap)
+                    val corrected = when {
+                        corners[uri] != null ->
+                            DocumentProcessor.warpNormalized(bitmap, corners[uri]!!)
+                        useAutoCorrect ->
+                            DocumentProcessor.autoCorrect(bitmap)
+                        else -> bitmap
+                    }
+                    val processed = process(corrected)
                     val manualRotation = ((rotations[uri] ?: 0) % 360 + 360) % 360
                     val finalBitmap = rotateForPdf(processed, manualRotation)
 
@@ -737,7 +821,8 @@ class MainActivity : Activity() {
                     )
                     pdf.finishPage(page)
                     if (finalBitmap !== processed) finalBitmap.recycle()
-                    if (processed !== bitmap) processed.recycle()
+                    if (processed !== corrected) processed.recycle()
+                    if (corrected !== bitmap) corrected.recycle()
                     bitmap.recycle()
                 }
 
