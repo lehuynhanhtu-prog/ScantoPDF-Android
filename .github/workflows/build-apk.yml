@@ -14,6 +14,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,11 +33,17 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Locate sdkmanager
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          test -x "$SDKMANAGER"
+
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null || true
+        run: yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Install Android API 36
-        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+        run: "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Build debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
