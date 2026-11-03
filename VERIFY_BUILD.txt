@@ -1,1 +1,3 @@
 Trigger pull request build verification for ScantoPDF Android APK.
+
+Retry after fixing sdkmanager path.
