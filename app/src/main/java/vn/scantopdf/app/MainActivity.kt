@@ -186,7 +186,7 @@ class MainActivity : Activity() {
         content.addView(export, fullWidth(bottom = 12))
 
         content.addView(TextView(this).apply {
-            text = "PDF tự xoay A4 ngang/dọc theo từng ảnh và giữ đúng tỷ lệ."
+            text = "PDF giữ thứ tự ảnh đã chọn; chế độ Màu tự làm nền giấy trắng hơn và giữ chữ rõ."
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(textSecondary)
@@ -520,6 +520,41 @@ class MainActivity : Activity() {
             }
             row.addView(editCorners, fullWidth(bottom = 8))
 
+            val orderRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            val moveUp = actionButton("↑ Lên", Color.rgb(90, 104, 120)).apply {
+                isEnabled = index > 0
+                alpha = if (isEnabled) 1f else 0.45f
+            }
+            val moveDown = actionButton("↓ Xuống", Color.rgb(90, 104, 120)).apply {
+                isEnabled = index < photos.lastIndex
+                alpha = if (isEnabled) 1f else 0.45f
+            }
+            val half = LinearLayout.LayoutParams(0, dp(50), 1f)
+            orderRow.addView(moveUp, half)
+            orderRow.addView(Space(this), LinearLayout.LayoutParams(dp(8), 1))
+            orderRow.addView(moveDown, half)
+            row.addView(orderRow, fullWidth(bottom = 8))
+
+            moveUp.setOnClickListener {
+                if (index > 0) {
+                    val current = photos.removeAt(index)
+                    photos.add(index - 1, current)
+                    dialog.dismiss()
+                    showPageReviewDialog()
+                }
+            }
+            moveDown.setOnClickListener {
+                if (index < photos.lastIndex) {
+                    val current = photos.removeAt(index)
+                    photos.add(index + 1, current)
+                    dialog.dismiss()
+                    showPageReviewDialog()
+                }
+            }
+
             val rotateOne = actionButton("Xoay trang 90°", navy)
             rotateOne.setOnClickListener {
                 pageRotations[uri] = ((pageRotations[uri] ?: 0) + 90) % 360
@@ -546,8 +581,8 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { addView(container) }
 
         dialog = AlertDialog.Builder(this)
-            .setTitle("Kiểm tra hướng các trang")
-            .setMessage("Xem lại từng ảnh trước khi tạo PDF. Có thể xoay riêng từng trang hoặc xoay tất cả.")
+            .setTitle("Kiểm tra và sắp xếp các trang")
+            .setMessage("Ảnh được giữ theo thứ tự đã chọn. Có thể đổi thứ tự bằng Lên/Xuống, chỉnh góc và xoay từng trang trước khi tạo PDF.")
             .setView(scroll)
             .setNegativeButton("Quay lại", null)
             .create()
@@ -753,13 +788,17 @@ class MainActivity : Activity() {
 
         if (requestCode == PICK) {
             resetScanSession(showMessage = false)
+            val selectedUris = mutableListOf<Uri>()
             data?.clipData?.let { clip ->
+                // Giữ nguyên thứ tự do trình chọn ảnh trả về; không tự sắp xếp theo tên/ngày.
                 for (i in 0 until clip.itemCount) {
-                    addPhoto(clip.getItemAt(i).uri)
+                    selectedUris.add(clip.getItemAt(i).uri)
                 }
-            } ?: data?.data?.let { addPhoto(it) }
+            } ?: data?.data?.let { selectedUris.add(it) }
+
+            selectedUris.forEach { addPhoto(it) }
             refresh()
-            toast("Đã bắt đầu PDF mới với ${photos.size} ảnh")
+            toast("Đã bắt đầu PDF mới với ${photos.size} ảnh theo thứ tự đã chọn")
             return
         }
 
@@ -908,7 +947,9 @@ class MainActivity : Activity() {
     }
     private fun process(source: Bitmap): Bitmap {
         val selected = mode.selectedItemPosition
-        if (selected == 0) return source
+        if (selected == 0) {
+            return DocumentProcessor.enhanceColorBackground(source)
+        }
 
         val result = source.copy(Bitmap.Config.ARGB_8888, true)
         val width = result.width
