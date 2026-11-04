@@ -153,6 +153,18 @@ def warp_document(im: Image.Image, normalized: list[tuple[float, float]]) -> Ima
     )
     return Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
 
+def enhance_color_background(im: Image.Image) -> Image.Image:
+    bgr = pil_to_bgr(im)
+    channels = cv2.split(bgr)
+    out_channels = []
+    for channel in channels:
+        background = cv2.GaussianBlur(channel, (0, 0), 25)
+        normalized = cv2.divide(channel, background, scale=245)
+        blended = cv2.addWeighted(normalized, 0.78, channel, 0.22, 0)
+        out_channels.append(blended)
+    merged = cv2.merge(out_channels)
+    return Image.fromarray(cv2.cvtColor(merged, cv2.COLOR_BGR2RGB))
+
 def prepare_page(page: Page, auto_crop: bool, mode: str, max_dim: int) -> Image.Image:
     im = pil_from_path(page.path)
 
@@ -173,7 +185,9 @@ def prepare_page(page: Page, auto_crop: bool, mode: str, max_dim: int) -> Image.
             Image.Resampling.LANCZOS,
         )
 
-    if mode == "Xám":
+    if mode == "Màu":
+        im = enhance_color_background(im)
+    elif mode == "Xám":
         im = ImageOps.grayscale(im).convert("RGB")
     elif mode == "Trắng đen (B&W)":
         gray = np.array(ImageOps.grayscale(im))
@@ -384,6 +398,7 @@ class ScantoPDFApp(tk.Tk):
         )
         if not paths:
             return
+        # Giữ nguyên thứ tự mà hộp chọn file trả về, không tự sắp xếp theo tên/ngày.
         self.pages = [Page(p) for p in paths]
         self.refresh_pages()
 
@@ -490,6 +505,25 @@ class ScantoPDFApp(tk.Tk):
                 text="Chỉnh 4 góc / Cắt mép",
                 command=lambda p=page: CornerEditor(self, p, self.refresh_pages),
             ).pack(fill="x", pady=3)
+            order_row = ttk.Frame(actions)
+            order_row.pack(fill="x", pady=3)
+            up = ttk.Button(
+                order_row,
+                text="↑ Lên",
+                command=lambda p=page: self.move_page(p, -1),
+            )
+            up.pack(side="left", fill="x", expand=True, padx=(0, 2))
+            down = ttk.Button(
+                order_row,
+                text="↓ Xuống",
+                command=lambda p=page: self.move_page(p, 1),
+            )
+            down.pack(side="left", fill="x", expand=True, padx=(2, 0))
+            if idx == 0:
+                up.state(["disabled"])
+            if idx == len(self.pages) - 1:
+                down.state(["disabled"])
+
             ttk.Button(
                 actions,
                 text="Xoay trang 90°",
@@ -509,6 +543,17 @@ class ScantoPDFApp(tk.Tk):
             self.status.config(text="Chưa có trang nào")
         else:
             self.status.config(text=f"{count} trang đã sẵn sàng")
+
+    def move_page(self, page, delta):
+        if page not in self.pages:
+            return
+        old_index = self.pages.index(page)
+        new_index = old_index + delta
+        if new_index < 0 or new_index >= len(self.pages):
+            return
+        self.pages.pop(old_index)
+        self.pages.insert(new_index, page)
+        self.refresh_pages()
 
     def rotate_one(self, page):
         page.rotation = (page.rotation + 90) % 360
