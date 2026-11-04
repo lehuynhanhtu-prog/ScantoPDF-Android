@@ -227,6 +227,45 @@ object DocumentProcessor {
         return result
     }
 
+    fun enhanceColorBackground(bitmap: Bitmap): Bitmap {
+        if (!init()) return bitmap
+
+        val rgba = Mat()
+        val rgb = Mat()
+        Utils.bitmapToMat(bitmap, rgba)
+        Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
+
+        val channels = mutableListOf<Mat>()
+        Core.split(rgb, channels)
+        val enhancedChannels = mutableListOf<Mat>()
+
+        for (channel in channels) {
+            val background = Mat()
+            val normalized = Mat()
+            val blended = Mat()
+            Imgproc.GaussianBlur(channel, background, Size(0.0, 0.0), 25.0)
+            Core.divide(channel, background, normalized, 245.0)
+            Core.addWeighted(normalized, 0.78, channel, 0.22, 0.0, blended)
+            enhancedChannels.add(blended)
+            background.release()
+            normalized.release()
+        }
+
+        val merged = Mat()
+        Core.merge(enhancedChannels, merged)
+        val outRgba = Mat()
+        Imgproc.cvtColor(merged, outRgba, Imgproc.COLOR_RGB2RGBA)
+        val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(outRgba, result)
+
+        channels.forEach { it.release() }
+        enhancedChannels.forEach { it.release() }
+        rgba.release()
+        rgb.release()
+        merged.release()
+        outRgba.release()
+        return result
+    }
     private fun orderCorners(input: List<Point>): List<Point> {
         val tl = input.minBy { it.x + it.y }
         val br = input.maxBy { it.x + it.y }
